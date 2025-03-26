@@ -4,7 +4,7 @@ import requests
 # Replace with your ngrok URL
 ngrok_url = 'https://76a7-41-143-49-120.ngrok-free.app'
 
-cap = cv2.VideoCapture('/dev/video10')
+cap = cv2.VideoCapture('/dev/video14')
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
