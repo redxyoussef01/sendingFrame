@@ -5,6 +5,8 @@ import requests
 ngrok_url = 'https://76a7-41-143-49-120.ngrok-free.app'
 
 cap = cv2.VideoCapture('/dev/video14')
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640) 
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
