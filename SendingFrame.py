@@ -2,7 +2,7 @@
 import cv2
 import requests
 
-ngrok_url = ' https://458f-41-251-195-136.ngrok-free.app'
+ngrok_url = 'https://458f-41-251-195-136.ngrok-free.app'
 cap = cv2.VideoCapture(0)
 while cap.isOpened():
     ret, frame = cap.read()
