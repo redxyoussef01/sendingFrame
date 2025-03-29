@@ -2,7 +2,7 @@ import cv2
 import requests
 
 # Replace with your ngrok URL
-ngrok_url = 'https://f9ce-105-71-18-245.ngrok-free.app'
+ngrok_url = ' https://458f-41-251-195-136.ngrok-free.app'
 
 for source in range(0, 41):
     print(f"Testing source {source}...")
