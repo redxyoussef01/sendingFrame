@@ -377,7 +377,7 @@ def accelerate():
 def reverse():
     data = request.get_json()
     speed = data.get('speed') if data else None
-    result = robot.reverse(speed)
+    result = robot.reverse(100)
     return jsonify(result)
 
 @app.route('/turn', methods=['POST'])
