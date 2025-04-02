@@ -1,16 +1,13 @@
 import cv2
+import requests
 
-cap = cv2.VideoCapture(0)  # Try with default device
-
-if not cap.isOpened():
-    print("Error: Could not open camera.")
-else:
+cap = cv2.VideoCapture(0)
+while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
-        print("Error: Failed to capture frame.")
-    else:
-        cv2.imshow("Frame", frame)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
+        break
+    _, encoded_frame = cv2.imencode('.jpg', frame)
+    response = requests.post('https://963e-105-157-85-231.ngrok-free.app/video_frame', data=encoded_frame.tobytes())
+    print(response.json())
 cap.release()
+requests.post('https://963e-105-157-85-231.ngrok-free.app/shutdown')
