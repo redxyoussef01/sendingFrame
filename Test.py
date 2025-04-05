@@ -522,15 +522,13 @@ def demo_sequence(robot):
     logging.info("Starting demo sequence")
     
     try:
-        robot.start_control_loop()
+        
         
         # Optional calibration
         # robot.calibrate_motors()
         
         robot.accelerate(300)
         time.sleep(1)
-        
-     
         
         robot.arc('left', 45, 300)
         time.sleep(1)
