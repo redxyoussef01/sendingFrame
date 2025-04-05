@@ -173,12 +173,12 @@ class Motor:
             GPIO.output(self.in1_pin, GPIO.HIGH)
             GPIO.output(self.in2_pin, GPIO.LOW)
             self.current_direction = Direction.FORWARD
-            self.current_speed = adjusted_speed
+            self.current_speed = -adjusted_speed
         elif direction == Direction.REVERSE:
             GPIO.output(self.in1_pin, GPIO.LOW)
             GPIO.output(self.in2_pin, GPIO.HIGH)
             self.current_direction = Direction.REVERSE
-            self.current_speed = -adjusted_speed
+            self.current_speed = adjusted_speed
         else:  # STOP
             GPIO.output(self.in1_pin, GPIO.LOW)
             GPIO.output(self.in2_pin, GPIO.LOW)
@@ -283,7 +283,7 @@ class RobotControl:
         # Movement profiles for smooth acceleration/deceleration
         self.movement_profiles = {
             "normal": {"accel_rate": 5, "decel_rate": 10, "max_speed": 70},
-            "sport": {"accel_rate": 10, "decel_rate": 20, "max_speed": 100},
+            "sport": {"accel_rate": 10, "decel_rate": 20, "max_speed": 300},
             "eco": {"accel_rate": 2, "decel_rate": 5, "max_speed": 50}
         }
         self.current_profile = "sport"
