@@ -525,14 +525,15 @@ def demo_sequence(robot):
         robot.start_control_loop()
         
         # Optional calibration
-        robot.calibrate_motors()
+        #robot.calibrate_motors()
         
-        robot.accelerate(300)
+        robot.accelerate(200)
         time.sleep(2)
         
         robot.arc('left', 45, 50)
         time.sleep(1)
-        
+        robot.accelerate(300)
+        time.sleep(2)
         robot.arc('right', 45, 50)
         time.sleep(5)
         
