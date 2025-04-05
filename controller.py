@@ -5,6 +5,8 @@ import json
 import signal
 import threading
 from enum import Enum
+from flask import Flask, request, jsonify
+from collections import deque
 
 # Configure logging
 logging.basicConfig(
@@ -22,6 +24,7 @@ class Direction(Enum):
     REVERSE = -1
     STOP = 0
 
+# PIDController class (unchanged)
 class PIDController:
     def __init__(self, Kp=1.2, Ki=0.1, Kd=0.05, setpoint=0.0, 
                  sample_time=0.1, output_limits=(-100, 100),
@@ -92,6 +95,7 @@ class PIDController:
             self.Kd = Kd
         logging.debug(f"PID tunings updated: Kp={self.Kp}, Ki={self.Ki}, Kd={self.Kd}")
 
+# Motor class (unchanged)
 class Motor:
     def __init__(self, name, enable_pin, in1_pin, in2_pin, 
                  pwm_freq=100, encoder_callback=None):
@@ -164,13 +168,52 @@ class Motor:
         self.pwm.stop()
         logging.debug(f"Motor {self.name} PWM stopped")
 
+# Ultrasonic Sensor class (unchanged)
+class UltrasonicSensor:
+    def __init__(self, name, trigger_pin, echo_pin):
+        self.name = name
+        self.trigger_pin = trigger_pin
+        self.echo_pin = echo_pin
+        
+        GPIO.setup(self.trigger_pin, GPIO.OUT)
+        GPIO.setup(self.echo_pin, GPIO.IN)
+        
+        GPIO.output(self.trigger_pin, False)
+        self.last_distance = 0.0
+        logging.info(f"Ultrasonic Sensor {self.name} initialized: Trigger={trigger_pin}, Echo={echo_pin}")
+    
+    def get_distance(self):
+        GPIO.output(self.trigger_pin, True)
+        time.sleep(0.00001)  # 10us pulse
+        GPIO.output(self.trigger_pin, False)
+        
+        start_time = time.time()
+        while GPIO.input(self.echo_pin) == 0:
+            start_time = time.time()
+            if time.time() - start_time > 0.02:  # Timeout after 20ms
+                return -1
+        
+        end_time = time.time()
+        while GPIO.input(self.echo_pin) == 1:
+            end_time = time.time()
+            if time.time() - start_time > 0.02:  # Timeout after 20ms
+                return -1
+        
+        pulse_duration = end_time - start_time
+        distance = (pulse_duration * 34300) / 2  # Distance in cm
+        
+        self.last_distance = distance
+        logging.debug(f"Ultrasonic {self.name}: Distance={distance:.1f}cm")
+        return distance
+
+# RobotControl class
 class RobotControl:
     def __init__(self, config_file=None):
         self.pin_config = {
             'motor_a': {'enable': 17, 'in1': 27, 'in2': 22},
             'motor_b': {'enable': 25, 'in3': 23, 'in4': 24},
-            'ir_sensor': {'left': 16, 'right': 20},  # TCRT5000
-            'ultrasonic': {
+            'ir_sensors': {'left': 16, 'right': 20},
+            'ultrasonic_sensors': {
                 'front': {'trigger': 5, 'echo': 6},
                 'rear': {'trigger': 13, 'echo': 19}
             }
@@ -188,54 +231,50 @@ class RobotControl:
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
         
-        # Setup IR sensors
-        self.ir_left_pin = self.pin_config['ir_sensor']['left']
-        self.ir_right_pin = self.pin_config['ir_sensor']['right']
-        GPIO.setup(self.ir_left_pin, GPIO.IN)
-        GPIO.setup(self.ir_right_pin, GPIO.IN)
-        
-        # Setup Ultrasonic sensors
-        self.front_trigger = self.pin_config['ultrasonic']['front']['trigger']
-        self.front_echo = self.pin_config['ultrasonic']['front']['echo']
-        self.rear_trigger = self.pin_config['ultrasonic']['rear']['trigger']
-        self.rear_echo = self.pin_config['ultrasonic']['rear']['echo']
-        GPIO.setup(self.front_trigger, GPIO.OUT)
-        GPIO.setup(self.front_echo, GPIO.IN)
-        GPIO.setup(self.rear_trigger, GPIO.OUT)
-        GPIO.setup(self.rear_echo, GPIO.IN)
-        
-        # Initialize motors
         self.motor_a = Motor("A", self.pin_config['motor_a']['enable'], 
                             self.pin_config['motor_a']['in1'], 
                             self.pin_config['motor_a']['in2'], 
                             encoder_callback=self.get_motor_speed_A)
+        
         self.motor_b = Motor("B", self.pin_config['motor_b']['enable'], 
                             self.pin_config['motor_b']['in3'], 
                             self.pin_config['motor_b']['in4'], 
                             encoder_callback=self.get_motor_speed_B)
         
-        # PID controllers
+        GPIO.setup(self.pin_config['ir_sensors']['left'], GPIO.IN)
+        GPIO.setup(self.pin_config['ir_sensors']['right'], GPIO.IN)
+        self.ir_left_pin = self.pin_config['ir_sensors']['left']
+        self.ir_right_pin = self.pin_config['ir_sensors']['right']
+        
+        self.us_front = UltrasonicSensor("front", 
+                                       self.pin_config['ultrasonic_sensors']['front']['trigger'],
+                                       self.pin_config['ultrasonic_sensors']['front']['echo'])
+        self.us_rear = UltrasonicSensor("rear", 
+                                      self.pin_config['ultrasonic_sensors']['rear']['trigger'],
+                                      self.pin_config['ultrasonic_sensors']['rear']['echo'])
+        
         self.pid_a = PIDController(setpoint=0, sample_time=0.05)
         self.pid_b = PIDController(setpoint=0, sample_time=0.05)
-        self.line_pid = PIDController(Kp=30.0, Ki=0.1, Kd=5.0, setpoint=0, 
-                                    sample_time=0.02, output_limits=(-50, 50))
         
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
         
         self.running = False
         self.control_thread = None
-        self.line_following_active = False
+        self.obstacle_detected = False
+        
+        # Command stack with timestamp, delay, and time left
+        self.command_stack = deque()  # (command, timestamp, delay, time_left)
         
         self.movement_profiles = {
             "normal": {"accel_rate": 5, "decel_rate": 10, "max_speed": 70},
-            "sport": {"accel_rate": 10, "decel_rate": 20, "max_speed": 150},
+            "sport": {"accel_rate": 10, "decel_rate": 20, "max_speed": 100},
             "eco": {"accel_rate": 2, "decel_rate": 5, "max_speed": 50}
         }
         self.current_profile = "sport"
         
         self.start_control_loop()
-        logging.info("Robot control system initialized with IR and Ultrasonic sensors")
+        logging.info("Robot control system initialized with command stack, IR for road detection, and Ultrasonic sensors")
     
     def get_motor_speed_A(self):
         return self.motor_a.current_speed
@@ -243,46 +282,17 @@ class RobotControl:
     def get_motor_speed_B(self):
         return self.motor_b.current_speed
     
-    def read_ir_sensors(self):
-        left = GPIO.input(self.ir_left_pin)
-        right = GPIO.input(self.ir_right_pin)
-        # TCRT5000: 0 = line detected, 1 = no line
-        if left == 0 and right == 0:  # Both on line
-            return 0.0
-        elif left == 0 and right == 1:  # Left on, right off
-            return -0.5
-        elif left == 1 and right == 0:  # Right on, left off
-            return 0.5
-        else:  # Both off
-            return None
+    def is_road_detected(self):
+        left_reading = GPIO.input(self.ir_left_pin) == 0
+        right_reading = GPIO.input(self.ir_right_pin) == 0
+        road_detected = left_reading and right_reading
+        logging.debug(f"Road detection: Left={left_reading}, Right={right_reading}, Detected={road_detected}")
+        return road_detected
     
-    def get_distance(self, trigger_pin, echo_pin):
-        # Send 10us pulse to trigger
-        GPIO.output(trigger_pin, True)
-        time.sleep(0.00001)
-        GPIO.output(trigger_pin, False)
-        
-        start_time = time.time()
-        stop_time = time.time()
-        
-        while GPIO.input(echo_pin) == 0:
-            start_time = time.time()
-            if start_time - stop_time > 0.1:  # Timeout
-                return None
-        
-        while GPIO.input(echo_pin) == 1:
-            stop_time = time.time()
-            if stop_time - start_time > 0.1:  # Timeout
-                return None
-        
-        elapsed = stop_time - start_time
-        distance = (elapsed * 34300) / 2  # Speed of sound in cm/s
-        return distance
-    
-    def check_obstacles(self):
-        front_dist = self.get_distance(self.front_trigger, self.front_echo)
-        rear_dist = self.get_distance(self.rear_trigger, self.rear_echo)
-        return (front_dist is not None and front_dist < 5) or (rear_dist is not None and rear_dist < 5)
+    def add_command(self, command, delay):
+        timestamp = time.time()
+        self.command_stack.append((command, timestamp, delay, delay))  # Initial time_left = delay
+        logging.info(f"Added command to stack: {command}, Delay: {delay}s, Stack size: {len(self.command_stack)}")
     
     def signal_handler(self, sig, frame):
         logging.info(f"Received signal {sig}, shutting down...")
@@ -293,6 +303,7 @@ class RobotControl:
         if self.running:
             logging.warning("Control loop already running")
             return
+        
         self.running = True
         self.control_thread = threading.Thread(target=self._control_loop)
         self.control_thread.daemon = True
@@ -301,44 +312,120 @@ class RobotControl:
     
     def _control_loop(self):
         loop_time = 0.02
+        last_time = time.time()
+        
         while self.running:
             loop_start = time.time()
+            current_time = time.time()
+            dt = current_time - last_time
             
-            feedback_a = self.get_motor_speed_A()
-            feedback_b = self.get_motor_speed_B()
-            
-            output_a = self.pid_a.update(feedback_a)
-            output_b = self.pid_b.update(feedback_b)
-            
-            if self.line_following_active:
-                line_error = self.read_ir_sensors()
-                if line_error is None or self.check_obstacles():
-                    self.motor_a.stop()
-                    self.motor_b.stop()
-                    if line_error is None:
-                        logging.warning("Line lost - stopping")
-                    if self.check_obstacles():
-                        logging.warning("Obstacle detected within 5cm - stopping")
+            # Update time_left for all commands and remove expired ones
+            updated_stack = deque()
+            for command, timestamp, delay, time_left in self.command_stack:
+                new_time_left = max(0, time_left - dt)
+                if new_time_left > 0:
+                    updated_stack.append((command, timestamp, delay, new_time_left))
                 else:
-                    correction = self.line_pid.update(line_error)
-                    base_speed = min(abs(output_a), abs(output_b))
-                    output_a = base_speed + correction
-                    output_b = base_speed - correction
-                    output_a = max(min(output_a, 100), 0)
-                    output_b = max(min(output_b, 100), 0)
+                    logging.info(f"Removed expired command: {command}")
+            self.command_stack = updated_stack
             
-            direction_a = Direction.FORWARD if output_a > 0 else Direction.STOP
-            direction_b = Direction.FORWARD if output_b > 0 else Direction.STOP
+            front_distance = self.us_front.get_distance()
+            rear_distance = self.us_rear.get_distance()
             
-            speed_a = min(100, abs(output_a))
-            speed_b = min(100, abs(output_b))
+            moving_forward = self.pid_a.setpoint > 0 or self.pid_b.setpoint > 0
+            moving_backward = self.pid_a.setpoint < 0 or self.pid_b.setpoint < 0
             
-            self.motor_a.set_speed(direction_a, speed_a)
-            self.motor_b.set_speed(direction_b, speed_b)
+            if (moving_forward and front_distance < 10 and front_distance != -1) or \
+               (moving_backward and rear_distance < 10 and rear_distance != -1):
+                if not self.obstacle_detected:
+                    self.emergency_stop()
+                    self.obstacle_detected = True
+                    logging.warning(f"Obstacle detected: Front={front_distance:.1f}cm, Rear={rear_distance:.1f}cm")
+            elif not self.is_road_detected():
+                self.stop()
+                logging.info("Road not detected, stopping motors")
+            else:
+                self.obstacle_detected = False
+                if self.command_stack:
+                    latest_command, _, _, _ = self.command_stack[-1]  # Get the latest command
+                    self._execute_command(latest_command)
+                else:
+                    self._regular_control()
             
+            last_time = current_time
             elapsed = time.time() - loop_start
             if elapsed < loop_time:
                 time.sleep(loop_time - elapsed)
+    
+    def _execute_command(self, command):
+        action = command.get("action")
+        if action == "accelerate":
+            speed = command.get("speed", self.movement_profiles[self.current_profile]["max_speed"])
+            self.pid_a.setpoint = speed
+            self.pid_b.setpoint = speed
+        elif action == "reverse":
+            speed = command.get("speed", self.movement_profiles[self.current_profile]["max_speed"] * 0.7)
+            self.pid_a.setpoint = -speed
+            self.pid_b.setpoint = -speed
+        elif action.startswith("turn_"):
+            direction = action.split("_")[1]
+            radius = command.get("radius", 0)
+            max_speed = self.movement_profiles[self.current_profile]["max_speed"]
+            if radius == 0:
+                if direction == 'left':
+                    self.pid_a.setpoint = max_speed
+                    self.pid_b.setpoint = -max_speed
+                else:
+                    self.pid_a.setpoint = -max_speed
+                    self.pid_b.setpoint = max_speed
+            else:
+                inner_speed = max_speed * (1 - min(1, 1/max(1, radius)))
+                if direction == 'left':
+                    self.pid_a.setpoint = max_speed
+                    self.pid_b.setpoint = inner_speed
+                else:
+                    self.pid_a.setpoint = inner_speed
+                    self.pid_b.setpoint = max_speed
+        elif action.startswith("arc_"):
+            direction = action.split("_")[1]
+            arc_angle = command["angle"]
+            speed = command.get("speed", self.movement_profiles[self.current_profile]["max_speed"] * 0.8)
+            differential = min(100, arc_angle / 90 * 100)
+            if direction == 'left':
+                self.pid_a.setpoint = speed
+                self.pid_b.setpoint = max(speed * (1 - differential/100), 0)
+            else:
+                self.pid_a.setpoint = max(speed * (1 - differential/100), 0)
+                self.pid_b.setpoint = speed
+        elif action == "stop":
+            self.pid_a.setpoint = 0
+            self.pid_b.setpoint = 0
+        elif action == "emergency_stop":
+            self.pid_a.setpoint = 0
+            self.pid_b.setpoint = 0
+            self.motor_a.brake()
+            self.motor_b.brake()
+            return
+        
+        self.pid_a.reset()
+        self.pid_b.reset()
+        self._regular_control()
+    
+    def _regular_control(self):
+        feedback_a = self.get_motor_speed_A()
+        feedback_b = self.get_motor_speed_B()
+        
+        output_a = self.pid_a.update(feedback_a)
+        output_b = self.pid_b.update(feedback_b)
+        
+        direction_a = Direction.FORWARD if output_a > 0 else Direction.REVERSE if output_a < 0 else Direction.STOP
+        direction_b = Direction.FORWARD if output_b > 0 else Direction.REVERSE if output_b < 0 else Direction.STOP
+        
+        speed_a = min(100, abs(output_a))
+        speed_b = min(100, abs(output_b))
+        
+        self.motor_a.set_speed(direction_a, speed_a)
+        self.motor_b.set_speed(direction_b, speed_b)
     
     def stop_control_loop(self):
         self.running = False
@@ -346,54 +433,55 @@ class RobotControl:
             self.control_thread.join(timeout=1.0)
         logging.info("Control loop stopped")
     
-    def start_line_following(self, speed=None):
-        if speed is None:
-            speed = self.movement_profiles[self.current_profile]["max_speed"] * 0.7
-        self.pid_a.setpoint = speed
-        self.pid_b.setpoint = speed
-        self.line_pid.reset()
-        self.line_following_active = True
-        logging.info(f"Line following started with speed {speed}")
+    def accelerate(self, speed=None, delay=5.0):
+        if not self.is_road_detected():
+            logging.warning("Road not detected, cannot accelerate")
+            return {"status": "error", "message": "Road not detected"}
+        command = {"action": "accelerate", "speed": speed}
+        self.add_command(command, delay)
+        return {"status": "success", "action": "accelerate", "speed": speed, "delay": delay}
     
-    def stop(self):
-        self.pid_a.setpoint = 0
-        self.pid_b.setpoint = 0
-        self.pid_a.reset()
-        self.pid_b.reset()
-        self.motor_a.stop()
-        self.motor_b.stop()
-        self.line_following_active = False
-        logging.info("Command: Stop motors")
+    def reverse(self, speed=None, delay=5.0):
+        if not self.is_road_detected():
+            logging.warning("Road not detected, cannot reverse")
+            return {"status": "error", "message": "Road not detected"}
+        command = {"action": "reverse", "speed": speed}
+        self.add_command(command, delay)
+        return {"status": "success", "action": "reverse", "speed": speed, "delay": delay}
     
-    def accelerate(self, speed=None):
-        self.start_line_following(speed)
+    def turn(self, direction, radius=0, delay=5.0):
+        if not self.is_road_detected():
+            logging.warning("Road not detected, cannot turn")
+            return {"status": "error", "message": "Road not detected"}
+        command = {"action": f"turn_{direction}", "radius": radius}
+        self.add_command(command, delay)
+        return {"status": "success", "action": f"turn_{direction}", "radius": radius, "delay": delay}
     
-    def reverse(self, speed=None):
-        logging.warning("Reverse not supported in line-following mode")
+    def stop(self, delay=2.0):
+        command = {"action": "stop"}
+        self.add_command(command, delay)
+        return {"status": "success", "action": "stop", "delay": delay}
     
-    def turn(self, direction, radius=0):
-        logging.warning("Manual turn not supported in line-following mode")
+    def emergency_stop(self, delay=1.0):
+        command = {"action": "emergency_stop"}
+        self.add_command(command, delay)
+        return {"status": "success", "action": "emergency_stop", "delay": delay}
     
-    def emergency_stop(self):
-        self.pid_a.setpoint = 0
-        self.pid_b.setpoint = 0
-        self.pid_a.reset()
-        self.pid_b.reset()
-        self.motor_a.brake()
-        self.motor_b.brake()
-        self.line_following_active = False
-        logging.warning("EMERGENCY STOP ACTIVATED")
-    
-    def arc(self, direction, arc_angle, speed=None):
-        logging.warning("Arc not supported in line-following mode")
+    def arc(self, direction, arc_angle, speed=None, delay=5.0):
+        if not self.is_road_detected():
+            logging.warning("Road not detected, cannot arc")
+            return {"status": "error", "message": "Road not detected"}
+        command = {"action": f"arc_{direction}", "angle": arc_angle, "speed": speed}
+        self.add_command(command, delay)
+        return {"status": "success", "action": f"arc_{direction}", "angle": arc_angle, "speed": speed, "delay": delay}
     
     def set_movement_profile(self, profile):
         if profile in self.movement_profiles:
             self.current_profile = profile
             logging.info(f"Movement profile set to {profile}")
-            return True
+            return {"status": "success", "profile": profile}
         logging.warning(f"Unknown profile: {profile}")
-        return False
+        return {"status": "error", "message": "Unknown profile"}
     
     def cleanup(self):
         self.stop_control_loop()
@@ -403,24 +491,121 @@ class RobotControl:
         GPIO.cleanup()
         logging.info("Robot control system shutdown complete")
 
-def demo_sequence(robot):
-    logging.info("Starting demo sequence")
-    try:
-        robot.start_control_loop()
-        robot.start_line_following(50)
-        time.sleep(20)  # Run for 20 seconds
-        robot.stop()
-    except KeyboardInterrupt:
-        logging.info("Demo interrupted by user")
-    finally:
-        robot.stop_control_loop()
-        robot.cleanup()
+# Flask application
+app = Flask(__name__)
+robot = RobotControl()
 
-def main():
-    logging.info("Starting motor control program")
-    robot = RobotControl()
-    demo_sequence(robot)
-    logging.info("Program completed")
+@app.route('/accelerate', methods=['POST'])
+def accelerate():
+    data = request.get_json() or {}
+    speed = data.get('speed')
+    delay = float(data.get('delay', 5.0))
+    result = robot.accelerate(speed, delay)
+    return jsonify(result)
+
+@app.route('/reverse', methods=['POST'])
+def reverse():
+    data = request.get_json() or {}
+    speed = data.get('speed')
+    delay = float(data.get('delay', 5.0))
+    result = robot.reverse(speed, delay)
+    return jsonify(result)
+
+@app.route('/turn', methods=['POST'])
+def turn():
+    data = request.get_json() or {}
+    if 'direction' not in data:
+        return jsonify({"status": "error", "message": "Direction required"}), 400
+    direction = data['direction']
+    radius = data.get('radius', 0)
+    delay = float(data.get('delay', 5.0))
+    if direction not in ['left', 'right']:
+        return jsonify({"status": "error", "message": "Direction must be 'left' or 'right'"}), 400
+    result = robot.turn(direction, radius, delay)
+    return jsonify(result)
+
+@app.route('/stop', methods=['POST'])
+def stop():
+    data = request.get_json() or {}
+    delay = float(data.get('delay', 2.0))
+    result = robot.stop(delay)
+    return jsonify(result)
+
+@app.route('/emergency_stop', methods=['POST'])
+def emergency_stop():
+    data = request.get_json() or {}
+    delay = float(data.get('delay', 1.0))
+    result = robot.emergency_stop(delay)
+    return jsonify(result)
+
+@app.route('/arc', methods=['POST'])
+def arc():
+    data = request.get_json() or {}
+    if 'direction' not in data or 'arc_angle' not in data:
+        return jsonify({"status": "error", "message": "Direction and arc_angle required"}), 400
+    direction = data['direction']
+    arc_angle = data['arc_angle']
+    speed = data.get('speed')
+    delay = float(data.get('delay', 5.0))
+    if direction not in ['left', 'right']:
+        return jsonify({"status": "error", "message": "Direction must be 'left' or 'right'"}), 400
+    result = robot.arc(direction, arc_angle, speed, delay)
+    return jsonify(result)
+
+@app.route('/set_profile', methods=['POST'])
+def set_profile():
+    data = request.get_json() or {}
+    if 'profile' not in data:
+        return jsonify({"status": "error", "message": "Profile required"}), 400
+    profile = data['profile']
+    result = robot.set_movement_profile(profile)
+    return jsonify(result)
+
+@app.route('/status', methods=['GET'])
+def status():
+    command_stack_info = [(cmd, timestamp, delay, time_left) for cmd, timestamp, delay, time_left in robot.command_stack]
+    return jsonify({
+        "status": "running",
+        "profile": robot.current_profile,
+        "motor_a_speed": robot.get_motor_speed_A(),
+        "motor_b_speed": robot.get_motor_speed_B(),
+        "setpoint_a": robot.pid_a.setpoint,
+        "setpoint_b": robot.pid_b.setpoint,
+        "road_detected": robot.is_road_detected(),
+        "ir_sensors": {
+            "left": {"pin": robot.ir_left_pin, "raw_value": GPIO.input(robot.ir_left_pin)},
+            "right": {"pin": robot.ir_right_pin, "raw_value": GPIO.input(robot.ir_right_pin)}
+        },
+        "ultrasonic_sensors": {
+            "front": {
+                "distance": robot.us_front.get_distance(),
+                "trigger_pin": robot.us_front.trigger_pin,
+                "echo_pin": robot.us_front.echo_pin
+            },
+            "rear": {
+                "distance": robot.us_rear.get_distance(),
+                "trigger_pin": robot.us_rear.trigger_pin,
+                "echo_pin": robot.us_rear.echo_pin
+            }
+        },
+        "obstacle_detected": robot.obstacle_detected,
+        "command_stack": [{"command": cmd, "timestamp": timestamp, "delay": delay, "time_left": time_left} 
+                          for cmd, timestamp, delay, time_left in command_stack_info]
+    })
+
+def shutdown_server():
+    robot.cleanup()
+    logging.info("Flask server shutting down")
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    shutdown_server()
+    return jsonify({"status": "success", "message": "Server shutting down"}), 200
 
 if __name__ == '__main__':
-    main()
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    except Exception as e:
+        logging.error(f"Server error: {e}")
+    finally:
+        shutdown_server()
