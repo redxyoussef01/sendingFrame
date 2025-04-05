@@ -530,19 +530,17 @@ def demo_sequence(robot):
         #robot.accelerate(200)
         time.sleep(2)
         
-        robot.arc('left', 90, 100)
+        robot.arc('right', 90, 100)
         time.sleep(2)
        
-       
-        robot.arc('right', 45, 100)
-        time.sleep(5)
+
+        #robot.arc('right', 45, 100)
+        #time.sleep(5)
         
         robot.stop()
         time.sleep(1)
         
-        robot.set_movement_profile("sport")
-        robot.accelerate()
-        time.sleep(3)
+  
         
         robot.emergency_stop()
         
