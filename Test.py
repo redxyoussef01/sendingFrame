@@ -286,7 +286,7 @@ class RobotControl:
             "sport": {"accel_rate": 10, "decel_rate": 20, "max_speed": 100},
             "eco": {"accel_rate": 2, "decel_rate": 5, "max_speed": 50}
         }
-        self.current_profile = "normal"
+        self.current_profile = "sport"
         
         logging.info("Robot control system initialized")
     
