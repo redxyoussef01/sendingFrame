@@ -604,7 +604,7 @@ def shutdown():
 
 if __name__ == '__main__':
     try:
-        app.run(host='0.0.0.0', port=5000, debug=False)
+        app.run(host='0.0.0.0', port=4002, debug=False)
     except Exception as e:
         logging.error(f"Server error: {e}")
     finally:
