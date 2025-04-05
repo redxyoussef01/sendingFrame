@@ -27,7 +27,7 @@ class Direction(Enum):
 # PIDController class (modified to support higher speed values)
 class PIDController:
     def __init__(self, Kp=1.2, Ki=0.1, Kd=0.05, setpoint=0.0, 
-                 sample_time=0.1, output_limits=(-300, 300),  # Modified output limits to allow for 300
+                 sample_time=0.1, output_limits=(-300, 300), 
                  anti_windup=True, filter_coefficient=0.1):
         self.Kp = Kp
         self.Ki = Ki
@@ -137,12 +137,12 @@ class Motor:
             GPIO.output(self.in1_pin, GPIO.HIGH)
             GPIO.output(self.in2_pin, GPIO.LOW)
             self.current_direction = Direction.FORWARD
-            self.current_speed = speed  # Store the original speed value
+            self.current_speed = speed
         elif direction == Direction.REVERSE:
             GPIO.output(self.in1_pin, GPIO.LOW)
             GPIO.output(self.in2_pin, GPIO.HIGH)
             self.current_direction = Direction.REVERSE
-            self.current_speed = -speed  # Store the original speed value with negative sign
+            self.current_speed = -speed
         else:
             GPIO.output(self.in1_pin, GPIO.LOW)
             GPIO.output(self.in2_pin, GPIO.LOW)
@@ -172,7 +172,7 @@ class Motor:
         self.pwm.stop()
         logging.debug(f"Motor {self.name} PWM stopped")
 
-# Ultrasonic Sensor class (unchanged)
+# Ultrasonic Sensor class
 class UltrasonicSensor:
     def __init__(self, name, trigger_pin, echo_pin):
         self.name = name
@@ -210,7 +210,7 @@ class UltrasonicSensor:
         logging.debug(f"Ultrasonic {self.name}: Distance={distance:.1f}cm")
         return distance
 
-# RobotControl class (modified for 300 speed)
+# RobotControl class
 class RobotControl:
     def __init__(self, config_file=None):
         self.pin_config = {
@@ -267,15 +267,14 @@ class RobotControl:
         self.control_thread = None
         self.obstacle_detected = False
         
-        # Command stack with timestamp, delay, and time left
         self.command_stack = deque()  # (command, timestamp, delay, time_left)
         
         self.movement_profiles = {
             "normal": {"accel_rate": 15, "decel_rate": 30, "max_speed": 210},
-            "sport": {"accel_rate": 100, "decel_rate": 60, "max_speed": 300},  # Updated to 300
+            "sport": {"accel_rate": 100, "decel_rate": 60, "max_speed": 300},
             "eco": {"accel_rate": 6, "decel_rate": 15, "max_speed": 150}
         }
-        self.current_profile = "sport"  # Default to sport mode with max speed 300
+        self.current_profile = "sport"
         
         self.start_control_loop()
         logging.info("Robot control system initialized with command stack, IR for road detection, and Ultrasonic sensors")
@@ -336,8 +335,9 @@ class RobotControl:
             front_distance = self.us_front.get_distance()
             rear_distance = self.us_rear.get_distance()
             
-            moving_forward = self.pid_a.setpoint > 0 or self.pid_b.setpoint > 0
-            moving_backward = self.pid_a.setpoint < 0 or self.pid_b.setpoint < 0
+            # Fix direction logic: Negative setpoints for forward, positive for backward
+            moving_forward = self.pid_a.setpoint < 0 or self.pid_b.setpoint < 0
+            moving_backward = self.pid_a.setpoint > 0 or self.pid_b.setpoint > 0
             
             if (moving_forward and front_distance < 10 and front_distance != -1) or \
                (moving_backward and rear_distance < 10 and rear_distance != -1):
@@ -346,18 +346,17 @@ class RobotControl:
                     self.obstacle_detected = True
                     logging.warning(f"Obstacle detected: Front={front_distance:.1f}cm, Rear={rear_distance:.1f}cm")
             else:
-                # Road detection check removed as per original code modification
-                road_detected = self.is_road_detected()
-                if not road_detected:
-                    # Just log it but continue driving
-                    logging.info("Road not detected, but continuing to drive")
-                
                 self.obstacle_detected = False
                 if self.command_stack:
-                    latest_command, _, _, _ = self.command_stack[-1]  # Get the latest command
+                    latest_command, _, _, _ = self.command_stack[-1]
                     self._execute_command(latest_command)
                 else:
-                    self._regular_control()
+                    # When stack is empty, stop the robot
+                    if self.pid_a.setpoint != 0 or self.pid_b.setpoint != 0:
+                        self.pid_a.setpoint = 0
+                        self.pid_b.setpoint = 0
+                        self._regular_control()
+                        logging.info("Command stack empty, robot stopped")
             
             last_time = current_time
             elapsed = time.time() - loop_start
@@ -367,24 +366,21 @@ class RobotControl:
     def _execute_command(self, command):
         action = command.get("action")
         if action == "accelerate":
-            # Always use 300 as speed unless explicitly set to something else
-            speed = command.get("speed", 300)  # Default to 300
-            self.pid_a.setpoint = -speed
+            speed = command.get("speed", 300)
+            self.pid_a.setpoint = -speed  # Negative for forward
             self.pid_b.setpoint = -speed
         elif action == "reverse":
-            # Always use 300 as speed unless explicitly set to something else
-            speed = command.get("speed", 300)  # Default to 300
-            self.pid_a.setpoint = speed
+            speed = command.get("speed", 300)
+            self.pid_a.setpoint = speed  # Positive for reverse
             self.pid_b.setpoint = speed
         elif action.startswith("turn_"):
             direction = action.split("_")[1]
             radius = command.get("radius", 0)
-            # Always use 300 as max speed
             max_speed = 300
             if radius == 0:
                 if direction == 'left':
-                    self.pid_a.setpoint = max_speed
-                    self.pid_b.setpoint = -max_speed
+                    self.pid_a.setpoint = max_speed  # Reverse one motor
+                    self.pid_b.setpoint = -max_speed  # Forward other motor
                 else:
                     self.pid_a.setpoint = -max_speed
                     self.pid_b.setpoint = max_speed
@@ -392,15 +388,14 @@ class RobotControl:
                 inner_speed = max_speed * (1 - min(1, 1/max(1, radius)))
                 if direction == 'left':
                     self.pid_a.setpoint = max_speed
-                    self.pid_b.setpoint = inner_speed
+                    self.pid_b.setpoint = -inner_speed  # Adjusted for turning
                 else:
-                    self.pid_a.setpoint = inner_speed
+                    self.pid_a.setpoint = -inner_speed
                     self.pid_b.setpoint = max_speed
         elif action.startswith("arc_"):
             direction = action.split("_")[1]
             arc_angle = command["angle"]
-            # Always use 300 as speed unless explicitly set to something else
-            speed = command.get("speed", 300)  # Default to 300
+            speed = command.get("speed", 300)
             differential = min(100, arc_angle / 90 * 100)
             if direction == 'left':
                 self.pid_a.setpoint = speed
@@ -432,7 +427,7 @@ class RobotControl:
         direction_a = Direction.FORWARD if output_a > 0 else Direction.REVERSE if output_a < 0 else Direction.STOP
         direction_b = Direction.FORWARD if output_b > 0 else Direction.REVERSE if output_b < 0 else Direction.STOP
         
-        speed_a = abs(output_a)  # No need to cap at 100 since Motor class now handles scaling
+        speed_a = abs(output_a)
         speed_b = abs(output_b)
         
         self.motor_a.set_speed(direction_a, speed_a)
@@ -445,7 +440,6 @@ class RobotControl:
         logging.info("Control loop stopped")
     
     def accelerate(self, speed=None, delay=5.0, direction="forward"):
-        # Default speed set to 300 if not specified
         if speed is None:
             speed = 300
         command = {"action": "accelerate", "speed": speed, "direction": direction}
@@ -453,7 +447,6 @@ class RobotControl:
         return {"status": "success", "action": "accelerate", "speed": speed, "direction": direction, "delay": delay}    
     
     def reverse(self, speed=None, delay=5.0):
-        # Default speed set to 300 if not specified
         if speed is None:
             speed = 300
         command = {"action": "reverse", "speed": speed}
@@ -476,7 +469,6 @@ class RobotControl:
         return {"status": "success", "action": "emergency_stop", "delay": delay}
     
     def arc(self, direction, arc_angle, speed=None, delay=5.0):
-        # Default speed set to 300 if not specified
         if speed is None:
             speed = 300
         command = {"action": f"arc_{direction}", "angle": arc_angle, "speed": speed}
@@ -506,7 +498,6 @@ robot = RobotControl()
 @app.route('/accelerate', methods=['POST'])
 def accelerate():
     data = request.get_json() or {}
-    # Always use 300 as default speed
     speed = data.get('speed', 300)
     delay = float(data.get('delay', 1.0))
     result = robot.accelerate(speed, delay)
@@ -515,7 +506,6 @@ def accelerate():
 @app.route('/reverse', methods=['POST'])
 def reverse():
     data = request.get_json() or {}
-    # Always use 300 as default speed
     speed = data.get('speed', 300)
     delay = float(data.get('delay', 1.0))
     result = robot.reverse(speed, delay)
@@ -555,7 +545,6 @@ def arc():
         return jsonify({"status": "error", "message": "Direction and arc_angle required"}), 400
     direction = data['direction']
     arc_angle = data['arc_angle']
-    # Always use 300 as default speed
     speed = data.get('speed', 300)
     delay = float(data.get('delay', 5.0))
     if direction not in ['left', 'right']:
