@@ -528,7 +528,7 @@ def demo_sequence(robot):
         # robot.calibrate_motors()
         
         robot.accelerate(300)
-        time.sleep(5)
+        time.sleep(4)
         
         robot.turn('left')
         time.sleep(3)
