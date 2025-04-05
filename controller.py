@@ -508,7 +508,7 @@ def accelerate():
     data = request.get_json() or {}
     # Always use 300 as default speed
     speed = data.get('speed', 300)
-    delay = float(data.get('delay', 2.0))
+    delay = float(data.get('delay', 1.0))
     result = robot.accelerate(speed, delay)
     return jsonify(result)
 
@@ -517,7 +517,7 @@ def reverse():
     data = request.get_json() or {}
     # Always use 300 as default speed
     speed = data.get('speed', 300)
-    delay = float(data.get('delay', 2.0))
+    delay = float(data.get('delay', 1.0))
     result = robot.reverse(speed, delay)
     return jsonify(result)
 
@@ -528,7 +528,7 @@ def turn():
         return jsonify({"status": "error", "message": "Direction required"}), 400
     direction = data['direction']
     radius = data.get('radius', 0)
-    delay = float(data.get('delay', 5.0))
+    delay = float(data.get('delay', 1.0))
     if direction not in ['left', 'right']:
         return jsonify({"status": "error", "message": "Direction must be 'left' or 'right'"}), 400
     result = robot.turn(direction, radius, delay)
