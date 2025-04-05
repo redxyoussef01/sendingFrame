@@ -444,13 +444,13 @@ class RobotControl:
             self.control_thread.join(timeout=1.0)
         logging.info("Control loop stopped")
     
-    def accelerate(self, speed=None, delay=5.0):
+    def accelerate(self, speed=None, delay=5.0, direction="forward"):
         # Default speed set to 300 if not specified
         if speed is None:
             speed = 300
-        command = {"action": "accelerate", "speed": speed}
+        command = {"action": "accelerate", "speed": speed, "direction": direction}
         self.add_command(command, delay)
-        return {"status": "success", "action": "accelerate", "speed": speed, "delay": delay}
+        return {"status": "success", "action": "accelerate", "speed": speed, "direction": direction, "delay": delay}    
     
     def reverse(self, speed=None, delay=5.0):
         # Default speed set to 300 if not specified
