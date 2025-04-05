@@ -341,10 +341,14 @@ class RobotControl:
                     self.emergency_stop()
                     self.obstacle_detected = True
                     logging.warning(f"Obstacle detected: Front={front_distance:.1f}cm, Rear={rear_distance:.1f}cm")
-            elif not self.is_road_detected():
-                self.stop()
-                logging.info("Road not detected, stopping motors")
             else:
+                # MODIFIED: Removed the road detection check that stopped the car
+                # We still detect the road but don't stop if it's not detected
+                road_detected = self.is_road_detected()
+                if not road_detected:
+                    # Just log it but continue running
+                    logging.info("Road not detected, but continuing to drive")
+                
                 self.obstacle_detected = False
                 if self.command_stack:
                     latest_command, _, _, _ = self.command_stack[-1]  # Get the latest command
@@ -434,25 +438,19 @@ class RobotControl:
         logging.info("Control loop stopped")
     
     def accelerate(self, speed=None, delay=5.0):
-        if not self.is_road_detected():
-            logging.warning("Road not detected, cannot accelerate")
-            return {"status": "error", "message": "Road not detected"}
+        # MODIFIED: Removed road detection check for acceleration
         command = {"action": "accelerate", "speed": speed}
         self.add_command(command, delay)
         return {"status": "success", "action": "accelerate", "speed": speed, "delay": delay}
     
     def reverse(self, speed=None, delay=5.0):
-        if not self.is_road_detected():
-            logging.warning("Road not detected, cannot reverse")
-            return {"status": "error", "message": "Road not detected"}
+        # MODIFIED: Removed road detection check for reverse
         command = {"action": "reverse", "speed": speed}
         self.add_command(command, delay)
         return {"status": "success", "action": "reverse", "speed": speed, "delay": delay}
     
     def turn(self, direction, radius=0, delay=5.0):
-        if not self.is_road_detected():
-            logging.warning("Road not detected, cannot turn")
-            return {"status": "error", "message": "Road not detected"}
+        # MODIFIED: Removed road detection check for turning
         command = {"action": f"turn_{direction}", "radius": radius}
         self.add_command(command, delay)
         return {"status": "success", "action": f"turn_{direction}", "radius": radius, "delay": delay}
@@ -468,9 +466,7 @@ class RobotControl:
         return {"status": "success", "action": "emergency_stop", "delay": delay}
     
     def arc(self, direction, arc_angle, speed=None, delay=5.0):
-        if not self.is_road_detected():
-            logging.warning("Road not detected, cannot arc")
-            return {"status": "error", "message": "Road not detected"}
+        # MODIFIED: Removed road detection check for arc
         command = {"action": f"arc_{direction}", "angle": arc_angle, "speed": speed}
         self.add_command(command, delay)
         return {"status": "success", "action": f"arc_{direction}", "angle": arc_angle, "speed": speed, "delay": delay}
