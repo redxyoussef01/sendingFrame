@@ -369,13 +369,13 @@ class RobotControl:
         if action == "accelerate":
             # Always use 300 as speed unless explicitly set to something else
             speed = command.get("speed", 300)  # Default to 300
-            self.pid_a.setpoint = speed
-            self.pid_b.setpoint = speed
+            self.pid_a.setpoint = -speed
+            self.pid_b.setpoint = -speed
         elif action == "reverse":
             # Always use 300 as speed unless explicitly set to something else
             speed = command.get("speed", 300)  # Default to 300
-            self.pid_a.setpoint = -speed
-            self.pid_b.setpoint = -speed
+            self.pid_a.setpoint = speed
+            self.pid_b.setpoint = speed
         elif action.startswith("turn_"):
             direction = action.split("_")[1]
             radius = command.get("radius", 0)
