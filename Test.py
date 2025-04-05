@@ -406,7 +406,7 @@ class RobotControl:
         logging.info("Control loop stopped")
     
     # Movement commands
-    def accelerate(self, speed=None):
+    def reverse(self, speed=None):
         """Accelerate forward at specified speed"""
         if speed is None:
             speed = self.movement_profiles[self.current_profile]["max_speed"]
@@ -416,8 +416,8 @@ class RobotControl:
         self.pid_a.reset()
         self.pid_b.reset()
         logging.info(f"Command: Accelerate forward (setpoint={speed})")
-    
-    def reverse(self, speed=None):
+
+    def accelerate(self, speed=None):
         """Move in reverse at specified speed"""
         if speed is None:
             speed = self.movement_profiles[self.current_profile]["max_speed"] * 0.7  # Typically slower in reverse
@@ -527,20 +527,13 @@ def demo_sequence(robot):
         # Optional calibration
         # robot.calibrate_motors()
         
-        robot.reverse(300)
+        robot.accelerate(300)
         time.sleep(1)
         
-        robot.turn('left')
-        time.sleep(3)
-        
-        robot.reverse(300)
-        time.sleep(5)
-        
-        robot.turn('right')
-        time.sleep(3)
+     
         
         robot.arc('left', 45, 300)
-        time.sleep(5)
+        time.sleep(1)
         
         robot.arc('right', 45, 300)
         time.sleep(5)
