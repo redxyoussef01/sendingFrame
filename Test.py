@@ -173,12 +173,12 @@ class Motor:
             GPIO.output(self.in1_pin, GPIO.HIGH)
             GPIO.output(self.in2_pin, GPIO.LOW)
             self.current_direction = Direction.FORWARD
-            self.current_speed = -adjusted_speed
+            self.current_speed = adjusted_speed
         elif direction == Direction.REVERSE:
             GPIO.output(self.in1_pin, GPIO.LOW)
             GPIO.output(self.in2_pin, GPIO.HIGH)
             self.current_direction = Direction.REVERSE
-            self.current_speed = adjusted_speed
+            self.current_speed = -adjusted_speed
         else:  # STOP
             GPIO.output(self.in1_pin, GPIO.LOW)
             GPIO.output(self.in2_pin, GPIO.LOW)
@@ -528,7 +528,7 @@ def demo_sequence(robot):
         # robot.calibrate_motors()
         
         robot.accelerate(300)
-        time.sleep(4)
+        time.sleep(1)
         
         robot.turn('left')
         time.sleep(3)
