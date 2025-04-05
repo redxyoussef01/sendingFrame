@@ -527,11 +527,11 @@ def demo_sequence(robot):
         # Optional calibration
         #robot.calibrate_motors()
         
-        robot.accelerate(200)
+        #robot.accelerate(200)
         time.sleep(2)
         
-        robot.arc('left', 45, 50)
-        time.sleep(1)
+        robot.arc('left', 90, 50)
+        time.sleep(2)
         robot.accelerate(300)
         time.sleep(2)
         robot.arc('right', 45, 50)
