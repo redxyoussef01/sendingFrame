@@ -531,20 +531,19 @@ def demo_sequence(robot):
         time.sleep(1.2)
         
         robot.arc('right', 105,  -105)
-        time.sleep(3.2)
+        time.sleep(3.22)
        
         robot.accelerate(110)
         time.sleep(1)
 
-        #robot.arc('right', 45, 100)
-        #time.sleep(5)
+    
         
         robot.stop()
         time.sleep(1)
         
   
         
-        robot.emergency_stop()
+        
         
     except KeyboardInterrupt:
         logging.info("Demo interrupted by user")

@@ -1,7 +1,7 @@
 import cv2
 import requests
 
-URL = 'https://e5bb-196-115-119-83.ngrok-free.app/video_frame'
+URL = 'https://6a6b-196-77-31-62.ngrok-free.app/video_frame'
 
 cap = cv2.VideoCapture(0)
 while cap.isOpened():
@@ -20,4 +20,4 @@ while cap.isOpened():
         print("Request Error:", e)
 
 cap.release()
-requests.post('https://e5bb-196-115-119-83.ngrok-free.app/shutdown', verify=False)
+requests.post('https://6a6b-196-77-31-62.ngrok-free.app/shutdown', verify=False)
