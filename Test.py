@@ -528,7 +528,7 @@ def demo_sequence(robot):
         #robot.calibrate_motors()
         
         robot.accelerate(120)
-        time.sleep(1.6)
+        time.sleep(1.2)
         
         robot.arc('right', 150,  -120)
         time.sleep(2.5)
