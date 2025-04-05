@@ -272,7 +272,7 @@ class RobotControl:
         
         self.movement_profiles = {
             "normal": {"accel_rate": 15, "decel_rate": 30, "max_speed": 210},
-            "sport": {"accel_rate": 30, "decel_rate": 60, "max_speed": 300},  # Updated to 300
+            "sport": {"accel_rate": 100, "decel_rate": 60, "max_speed": 300},  # Updated to 300
             "eco": {"accel_rate": 6, "decel_rate": 15, "max_speed": 150}
         }
         self.current_profile = "sport"  # Default to sport mode with max speed 300
