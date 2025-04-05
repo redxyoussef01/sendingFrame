@@ -530,11 +530,12 @@ def demo_sequence(robot):
         robot.accelerate(120)
         time.sleep(1.6)
         
-        robot.arc('right', 110,  -150)
+        robot.arc('right', 120,  -140)
         time.sleep(2)
        
         robot.accelerate(120)
         time.sleep(1.7)
+
         #robot.arc('right', 45, 100)
         #time.sleep(5)
         
