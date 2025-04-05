@@ -508,7 +508,7 @@ def accelerate():
     data = request.get_json() or {}
     # Always use 300 as default speed
     speed = data.get('speed', 300)
-    delay = float(data.get('delay', 5.0))
+    delay = float(data.get('delay', 2.0))
     result = robot.accelerate(speed, delay)
     return jsonify(result)
 
@@ -517,7 +517,7 @@ def reverse():
     data = request.get_json() or {}
     # Always use 300 as default speed
     speed = data.get('speed', 300)
-    delay = float(data.get('delay', 5.0))
+    delay = float(data.get('delay', 2.0))
     result = robot.reverse(speed, delay)
     return jsonify(result)
 
