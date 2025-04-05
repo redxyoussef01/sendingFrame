@@ -518,48 +518,41 @@ class RobotControl:
 
 
 def demo_sequence(robot):
-    """Run a demo sequence of movements: forward twice, turn left, forward"""
-    logging.info("Starting custom demo sequence")
+    """Run a demo sequence of movements"""
+    logging.info("Starting demo sequence")
     
     try:
-        # Start the PID control loop
         robot.start_control_loop()
         
-        # First forward movement at speed 300
-        logging.info("First forward movement")
+        # Optional calibration
+        # robot.calibrate_motors()
+        
         robot.accelerate(300)
-        time.sleep(4)  # Move forward for 4 seconds
+        time.sleep(4)
         
-        # Stop briefly
-        robot.stop()
-        time.sleep(1)  # Pause for 1 second
-        
-        # Second forward movement at speed 300
-        logging.info("Second forward movement")
-        robot.accelerate(300)
-        time.sleep(4)  # Move forward for 4 seconds
-        
-        # Stop briefly
-        robot.stop()
-        time.sleep(1)  # Pause for 1 second
-        
-        # Turn left
-        logging.info("Turning left")
         robot.turn('left')
-        time.sleep(3)  # Turn for 3 seconds
+        time.sleep(3)
         
-        # Stop briefly
+        robot.reverse(300)
+        time.sleep(5)
+        
+        robot.turn('right')
+        time.sleep(3)
+        
+        robot.arc('left', 45, 300)
+        time.sleep(5)
+        
+        robot.arc('right', 45, 300)
+        time.sleep(5)
+        
         robot.stop()
-        time.sleep(1)  # Pause for 1 second
+        time.sleep(1)
         
-        # Final forward movement at speed 300
-        logging.info("Final forward movement")
-        robot.accelerate(300)
-        time.sleep(4)  # Move forward for 4 seconds
+        robot.set_movement_profile("sport")
+        robot.accelerate()
+        time.sleep(3)
         
-        # Final stop
-        robot.stop()
-        logging.info("Demo sequence completed")
+        robot.emergency_stop()
         
     except KeyboardInterrupt:
         logging.info("Demo interrupted by user")
